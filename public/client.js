@@ -1,9 +1,10 @@
 // client.js
-
 const socket = new WebSocket('ws://localhost:8080');
 let scene, camera, renderer;
 let player, bullets = [], zombies = [];
 let velocity = new THREE.Vector3(); // Pour stocker la vélocité du joueur
+const playerVelocity = new THREE.Vector3();
+const playerDirection = new THREE.Vector3();
 let jumpVelocity = 0.2;
 let gravity = -0.01;
 let isJumping = false;
@@ -11,6 +12,8 @@ let isSprinting = false;
 let onGround = true;
 let score = 0; // Score du joueur
 let waveNumber = 1; // Compteur de manches
+const clock = new THREE.Clock();
+const STEPS_PER_FRAME = 5;
 
 // Variables pour le contrôle de la souris
 let mouseSensitivity = 0.002;
@@ -20,10 +23,11 @@ const maxPitch = Math.PI / 2; // Limiter la rotation verticale
 
 // Variables pour le contrôle des touches
 let keys = {
-    'w': false,
+    'z': false,
     's': false,
-    'a': false,
+    'q': false,
     'd': false,
+    'k': false,
     'Shift': false
 };
 
@@ -37,6 +41,7 @@ const initialZombiePositions = [
 function init() {
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.rotation.order = 'YXZ';
     renderer = new THREE.WebGLRenderer();
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
@@ -61,6 +66,8 @@ function init() {
     const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
     player = new THREE.Mesh(playerGeometry, playerMaterial);
     player.position.y = 0.5;
+    player.rotation.order = 'YXZ';
+    player.add(camera);
     scene.add(player);
 
     camera.position.z = 5;
@@ -79,13 +86,15 @@ function init() {
     // Faire apparaître les zombies au lancement
     startWave(waveNumber);
 
-    function animate() {
+    function animate(){
+        const deltaTime = Math.min( 0.05, clock.getDelta() ) / STEPS_PER_FRAME;
+
         requestAnimationFrame(animate);
         applyPhysics();
         checkCollisions();
         updateScore();
         updateWaveInfo(); // Mise à jour du compteur de manches
-        handleMovement();
+        handleMovement(deltaTime );
         updateZombieMovement(); // Mise à jour du déplacement des zombies
         renderer.render(scene, camera);
     }
@@ -103,6 +112,53 @@ function init() {
             document.removeEventListener('mousemove', onMouseMove, false);
         }
     });
+
+    function control( deltaTime ) {
+        const speedDelta = deltaTime * ( playerOnFloor ? 350 : 90 ); // si le joueur est au sol alors il va plus vite
+        if(playerTouchBuffer == undefined && gameState == 1){ // si la partie a commencer et que le joueur n'a pas été toucher alors il peut bouger
+            if ( keyStates[ 'KeyW' ] ) {
+                if(playerOnFloor){
+                    actionAnime = 'walk';
+                }
+                playerVelocity.add( getForwardVector().multiplyScalar( speedDelta ) );
+            }
+            if ( keyStates[ 'KeyS' ] ) {
+                if(playerOnFloor){
+                    actionAnime = 'back';
+                }
+                playerVelocity.add( getForwardVector().multiplyScalar( - speedDelta ) );
+            }
+            if ( keyStates[ 'KeyA' ] ) {
+                if(playerOnFloor){
+                    actionAnime = 'right';
+                }
+                playerVelocity.add( getSideVector().multiplyScalar( - speedDelta ) );
+            }
+            if ( keyStates[ 'KeyD' ] ) {
+                if(playerOnFloor){
+                    actionAnime = 'left';
+                }
+                playerVelocity.add( getSideVector().multiplyScalar( speedDelta ) );
+            }
+            if ( keyStates[ 'KeyK' ] ) {
+                console.log("x: "+player.position.x);
+                console.log("z: "+player.position.z);
+            }
+            if ( playerOnFloor ) {
+                if ( keyStates[ 'Space' ] ) {
+                    actionAnime = 'jump';
+                    playerVelocity.y = 70;
+                } else if( !keyStates[ 'KeyA' ] && !keyStates[ 'KeyW' ] && !keyStates[ 'KeyS' ] && !keyStates[ 'KeyD' ]){
+                    actionAnime = 'stand';
+                }
+            } if ( keyStates[ 'KeyQ' ] ) {
+                player.rotation.y += 0.03;
+            }
+            if ( keyStates[ 'KeyE' ] ) {
+                player.rotation.y -= 0.03;
+            }
+        }
+    }
 
     // Release pointer lock on Esc
     document.addEventListener('keydown', (event) => {
@@ -127,14 +183,16 @@ function init() {
 }
 
 function onMouseMove(event) {
-    yaw -= event.movementX * mouseSensitivity;
-    pitch -= event.movementY * mouseSensitivity;
-
-    // Limiter la rotation verticale pour éviter que la caméra ne fasse un tour complet
-    pitch = Math.max(-maxPitch, Math.min(maxPitch, pitch));
-
-    camera.rotation.y = yaw;
-    camera.rotation.x = pitch;
+    // yaw -= event.movementX * mouseSensitivity;
+    // pitch -= event.movementY * mouseSensitivity;
+    //
+    // // Limiter la rotation verticale pour éviter que la caméra ne fasse un tour complet
+    // pitch = Math.max(-maxPitch, Math.min(maxPitch, pitch));
+    //
+    // player.rotation.y = yaw;
+    // player.rotation.x = pitch;
+    player.rotation.y -= event.movementX / 500;
+    player.rotation.x += event.movementY / 500 ;
 }
 
 function applyPhysics() {
@@ -158,33 +216,48 @@ function applyPhysics() {
     }
 }
 
-function handleMovement() {
-    const moveDistance = isSprinting ? 0.2 : 0.1; // Vitesse de sprint
-    const vector = new THREE.Vector3();
+function getForwardVector() {
+    player.getWorldDirection( playerDirection ); // renvoie le vecteur qui correspond a la direction du joueur
+    playerDirection.y = 0;
+    playerDirection.normalize(); // met entre 1 et 0
 
-    if (keys['w']) {
-        vector.setFromMatrixColumn(camera.matrix, 0); // Avant
-        vector.crossVectors(camera.up, vector);
-        player.position.addScaledVector(vector, moveDistance);
+    return playerDirection;
+}
+
+function getSideVector() {
+    player.getWorldDirection( playerDirection );  // renvoie le vecteur qui correspond a la direction du joueur
+    playerDirection.y = 0;
+    playerDirection.normalize(); // met entre 1 et 0
+    playerDirection.cross( player.up ); // croise le vecteur de direction coter avec le vecteur de direction avant
+
+    return playerDirection;
+}
+
+function handleMovement(deltaTime ) {
+    const moveDistance = isSprinting ? 0.2 : 0.1; // Vitesse de sprint
+    const SPEED = 1;
+    const speedDelta = deltaTime * SPEED;
+
+    if (keys['z']) {
+        velocity.add( getForwardVector().multiplyScalar( -speedDelta) );
     }
     if (keys['s']) {
-        vector.setFromMatrixColumn(camera.matrix, 0); // Arrière
-        vector.crossVectors(camera.up, vector);
-        vector.negate();
-        player.position.addScaledVector(vector, moveDistance);
+        velocity.add( getForwardVector().multiplyScalar( speedDelta ) );
     }
-    if (keys['a']) {
-        vector.setFromMatrixColumn(camera.matrix, 0); // Gauche
-        vector.negate();
-        player.position.addScaledVector(vector, moveDistance);
+    if (keys['q']) {
+        playerVelocity.add( getSideVector().multiplyScalar( speedDelta ) );
     }
     if (keys['d']) {
-        vector.setFromMatrixColumn(camera.matrix, 0); // Droite
-        player.position.addScaledVector(vector, moveDistance);
+        playerVelocity.add( getSideVector().multiplyScalar( -speedDelta ) );
+    }
+    if ( keys[ 'k' ] ) {
+        console.log("x: "+player.position.x);
+        console.log("z: "+player.position.z);
     }
 
     // Mise à jour de la position de la caméra en fonction du joueur
-    camera.position.copy(player.position).add(new THREE.Vector3(0, 2, 5).applyQuaternion(camera.quaternion));
+    // camera.position.copy(player.position).add(new THREE.Vector3(0, 2, 5).applyQuaternion(camera.quaternion));
+    playerVelocity.addScaledVector( playerVelocity, 1 ); // freine le joueur
     sendPositionUpdate(); // Envoi des mises à jour de la position
 }
 
@@ -277,8 +350,8 @@ document.addEventListener('click', (event) => {
         new THREE.SphereGeometry(0.1),
         new THREE.MeshBasicMaterial({ color: 0xff0000 })
     );
-    bullet.position.copy(camera.position);
-    bullet.velocity = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    bullet.position.copy(player.position);
+    bullet.velocity = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
     scene.add(bullet);
     bullets.push(bullet);
     sendShoot(bullet); // Envoi du tir
