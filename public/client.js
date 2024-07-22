@@ -13,6 +13,7 @@ let onGround = true;
 let score = 0; // Score du joueur
 let waveNumber = 1; // Compteur de manches
 const clock = new THREE.Clock();
+
 const STEPS_PER_FRAME = 5;
 
 // Variables pour le contrôle de la souris
@@ -89,12 +90,16 @@ function init() {
     function animate(){
         const deltaTime = Math.min( 0.05, clock.getDelta() ) / STEPS_PER_FRAME;
 
+        for(let i = 0; i < STEPS_PER_FRAME; i++){
+            handleMovement(deltaTime );
+        }
+        
         requestAnimationFrame(animate);
         applyPhysics();
         checkCollisions();
         updateScore();
         updateWaveInfo(); // Mise à jour du compteur de manches
-        handleMovement(deltaTime );
+        // handleMovement(deltaTime );
         updateZombieMovement(); // Mise à jour du déplacement des zombies
         renderer.render(scene, camera);
     }
@@ -233,9 +238,10 @@ function getSideVector() {
     return playerDirection;
 }
 
-function handleMovement(deltaTime ) {
+function handleMovement(deltaTime) {
+
     const moveDistance = isSprinting ? 0.2 : 0.1; // Vitesse de sprint
-    const SPEED = 1;
+    const SPEED = 0.2;
     const speedDelta = deltaTime * SPEED;
 
     if (keys['z']) {
@@ -245,10 +251,10 @@ function handleMovement(deltaTime ) {
         velocity.add( getForwardVector().multiplyScalar( speedDelta ) );
     }
     if (keys['q']) {
-        playerVelocity.add( getSideVector().multiplyScalar( speedDelta ) );
+        velocity.add( getSideVector().multiplyScalar( speedDelta ) );
     }
     if (keys['d']) {
-        playerVelocity.add( getSideVector().multiplyScalar( -speedDelta ) );
+        velocity.add( getSideVector().multiplyScalar( -speedDelta ) );
     }
     if ( keys[ 'k' ] ) {
         console.log("x: "+player.position.x);
@@ -257,7 +263,10 @@ function handleMovement(deltaTime ) {
 
     // Mise à jour de la position de la caméra en fonction du joueur
     // camera.position.copy(player.position).add(new THREE.Vector3(0, 2, 5).applyQuaternion(camera.quaternion));
-    playerVelocity.addScaledVector( playerVelocity, 1 ); // freine le joueur
+    let damping = Math.exp( -4 * deltaTime ) - 1; // effet de ralentissement
+    console.log(damping);
+    velocity.addScaledVector( velocity, damping ); // freine le joueur
+    // velocity.add( getSideVector().multiplyScalar( -damping ) );
     sendPositionUpdate(); // Envoi des mises à jour de la position
 }
 
