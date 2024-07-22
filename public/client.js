@@ -6,7 +6,7 @@ let velocity = new THREE.Vector3(); // Pour stocker la vélocité du joueur
 const playerVelocity = new THREE.Vector3();
 const playerDirection = new THREE.Vector3();
 let jumpVelocity = 0.2;
-let gravity = -0.01;
+let gravity = -0.001;
 let isJumping = false;
 let isSprinting = false;
 let onGround = true;
@@ -71,8 +71,8 @@ function init() {
     player.add(camera);
     scene.add(player);
 
-    camera.position.z = 5;
-    camera.position.y = 2;
+    camera.position.z = 0;
+    camera.position.y = 0.5;
 
     // Création d'éléments HTML pour afficher le score et le compteur de manches
     const infoElement = document.createElement('div');
@@ -90,16 +90,16 @@ function init() {
     function animate(){
         const deltaTime = Math.min( 0.05, clock.getDelta() ) / STEPS_PER_FRAME;
 
-        for(let i = 0; i < STEPS_PER_FRAME; i++){
-            handleMovement(deltaTime );
-        }
+        // for(let i = 0; i < STEPS_PER_FRAME; i++){
+        //     handleMovement(deltaTime );
+        // }
         
         requestAnimationFrame(animate);
         applyPhysics();
         checkCollisions();
         updateScore();
         updateWaveInfo(); // Mise à jour du compteur de manches
-        // handleMovement(deltaTime );
+        handleMovement(deltaTime );
         updateZombieMovement(); // Mise à jour du déplacement des zombies
         renderer.render(scene, camera);
     }
@@ -117,53 +117,6 @@ function init() {
             document.removeEventListener('mousemove', onMouseMove, false);
         }
     });
-
-    function control( deltaTime ) {
-        const speedDelta = deltaTime * ( playerOnFloor ? 350 : 90 ); // si le joueur est au sol alors il va plus vite
-        if(playerTouchBuffer == undefined && gameState == 1){ // si la partie a commencer et que le joueur n'a pas été toucher alors il peut bouger
-            if ( keyStates[ 'KeyW' ] ) {
-                if(playerOnFloor){
-                    actionAnime = 'walk';
-                }
-                playerVelocity.add( getForwardVector().multiplyScalar( speedDelta ) );
-            }
-            if ( keyStates[ 'KeyS' ] ) {
-                if(playerOnFloor){
-                    actionAnime = 'back';
-                }
-                playerVelocity.add( getForwardVector().multiplyScalar( - speedDelta ) );
-            }
-            if ( keyStates[ 'KeyA' ] ) {
-                if(playerOnFloor){
-                    actionAnime = 'right';
-                }
-                playerVelocity.add( getSideVector().multiplyScalar( - speedDelta ) );
-            }
-            if ( keyStates[ 'KeyD' ] ) {
-                if(playerOnFloor){
-                    actionAnime = 'left';
-                }
-                playerVelocity.add( getSideVector().multiplyScalar( speedDelta ) );
-            }
-            if ( keyStates[ 'KeyK' ] ) {
-                console.log("x: "+player.position.x);
-                console.log("z: "+player.position.z);
-            }
-            if ( playerOnFloor ) {
-                if ( keyStates[ 'Space' ] ) {
-                    actionAnime = 'jump';
-                    playerVelocity.y = 70;
-                } else if( !keyStates[ 'KeyA' ] && !keyStates[ 'KeyW' ] && !keyStates[ 'KeyS' ] && !keyStates[ 'KeyD' ]){
-                    actionAnime = 'stand';
-                }
-            } if ( keyStates[ 'KeyQ' ] ) {
-                player.rotation.y += 0.03;
-            }
-            if ( keyStates[ 'KeyE' ] ) {
-                player.rotation.y -= 0.03;
-            }
-        }
-    }
 
     // Release pointer lock on Esc
     document.addEventListener('keydown', (event) => {
