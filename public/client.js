@@ -6,14 +6,15 @@ let velocity = new THREE.Vector3(); // Pour stocker la vélocité du joueur
 const playerVelocity = new THREE.Vector3();
 const playerDirection = new THREE.Vector3();
 let jumpVelocity = 0.2;
-let gravity = -0.001;
+let gravity = -0.005;
 let isJumping = false;
 let isSprinting = false;
 let onGround = true;
 let score = 0; // Score du joueur
 let waveNumber = 1; // Compteur de manches
+let lives = 3; // Vies du joueur
+let isInvincible = false; // Pour éviter de perdre plusieurs vies rapidement
 const clock = new THREE.Clock();
-
 const STEPS_PER_FRAME = 5;
 
 // Variables pour le contrôle de la souris
@@ -68,13 +69,12 @@ function init() {
     player = new THREE.Mesh(playerGeometry, playerMaterial);
     player.position.y = 0.5;
     player.rotation.order = 'YXZ';
-    player.add(camera);
     scene.add(player);
 
-    camera.position.z = 0;
-    camera.position.y = 0.5;
+    camera.position.set(0, 1, 0); // Placer la caméra à la hauteur des yeux du joueur
+    player.add(camera); // Fixer la caméra au joueur
 
-    // Création d'éléments HTML pour afficher le score et le compteur de manches
+    // Création d'éléments HTML pour afficher le score, le compteur de manches et les vies
     const infoElement = document.createElement('div');
     infoElement.style.position = 'absolute';
     infoElement.style.top = '10px';
@@ -93,12 +93,12 @@ function init() {
         // for(let i = 0; i < STEPS_PER_FRAME; i++){
         //     handleMovement(deltaTime );
         // }
-        
+
         requestAnimationFrame(animate);
         applyPhysics();
         checkCollisions();
-        updateScore();
-        updateWaveInfo(); // Mise à jour du compteur de manches
+        checkPlayerZombieCollisions(); // Vérification des collisions joueur-zombie
+        updateInfo(); // Mise à jour des infos (score, manche, vies)
         handleMovement(deltaTime );
         updateZombieMovement(); // Mise à jour du déplacement des zombies
         renderer.render(scene, camera);
@@ -141,16 +141,14 @@ function init() {
 }
 
 function onMouseMove(event) {
-    // yaw -= event.movementX * mouseSensitivity;
-    // pitch -= event.movementY * mouseSensitivity;
-    //
-    // // Limiter la rotation verticale pour éviter que la caméra ne fasse un tour complet
-    // pitch = Math.max(-maxPitch, Math.min(maxPitch, pitch));
-    //
-    // player.rotation.y = yaw;
-    // player.rotation.x = pitch;
-    player.rotation.y -= event.movementX / 500;
-    player.rotation.x += event.movementY / 500 ;
+    yaw -= event.movementX * mouseSensitivity;
+    pitch -= event.movementY * mouseSensitivity;
+
+    // Limiter la rotation verticale pour éviter que la caméra ne fasse un tour complet
+    pitch = Math.max(-maxPitch, Math.min(maxPitch, pitch));
+
+    player.rotation.y = yaw;
+    camera.rotation.x = pitch;
 }
 
 function applyPhysics() {
@@ -175,7 +173,7 @@ function applyPhysics() {
 }
 
 function getForwardVector() {
-    player.getWorldDirection( playerDirection ); // renvoie le vecteur qui correspond a la direction du joueur
+    player.getWorldDirection(playerDirection); // renvoie le vecteur qui correspond a la direction du joueur
     playerDirection.y = 0;
     playerDirection.normalize(); // met entre 1 et 0
 
@@ -183,43 +181,39 @@ function getForwardVector() {
 }
 
 function getSideVector() {
-    player.getWorldDirection( playerDirection );  // renvoie le vecteur qui correspond a la direction du joueur
+    player.getWorldDirection(playerDirection);  // renvoie le vecteur qui correspond a la direction du joueur
     playerDirection.y = 0;
     playerDirection.normalize(); // met entre 1 et 0
-    playerDirection.cross( player.up ); // croise le vecteur de direction coter avec le vecteur de direction avant
+    playerDirection.cross(player.up); // croise le vecteur de direction coter avec le vecteur de direction avant
 
     return playerDirection;
 }
 
 function handleMovement(deltaTime) {
-
     const moveDistance = isSprinting ? 0.2 : 0.1; // Vitesse de sprint
     const SPEED = 0.2;
     const speedDelta = deltaTime * SPEED;
 
     if (keys['z']) {
-        velocity.add( getForwardVector().multiplyScalar( -speedDelta) );
+        velocity.add(getForwardVector().multiplyScalar(-speedDelta));
     }
     if (keys['s']) {
-        velocity.add( getForwardVector().multiplyScalar( speedDelta ) );
+        velocity.add(getForwardVector().multiplyScalar(speedDelta));
     }
     if (keys['q']) {
-        velocity.add( getSideVector().multiplyScalar( speedDelta ) );
+        velocity.add(getSideVector().multiplyScalar(speedDelta));
     }
     if (keys['d']) {
-        velocity.add( getSideVector().multiplyScalar( -speedDelta ) );
+        velocity.add(getSideVector().multiplyScalar(-speedDelta));
     }
-    if ( keys[ 'k' ] ) {
-        console.log("x: "+player.position.x);
-        console.log("z: "+player.position.z);
+    if (keys['k']) {
+        console.log("x: " + player.position.x);
+        console.log("z: " + player.position.z);
     }
 
     // Mise à jour de la position de la caméra en fonction du joueur
-    // camera.position.copy(player.position).add(new THREE.Vector3(0, 2, 5).applyQuaternion(camera.quaternion));
-    let damping = Math.exp( -4 * deltaTime ) - 1; // effet de ralentissement
-    console.log(damping);
-    velocity.addScaledVector( velocity, damping ); // freine le joueur
-    // velocity.add( getSideVector().multiplyScalar( -damping ) );
+    let damping = Math.exp(-4 * deltaTime) - 1; // effet de ralentissement
+    velocity.addScaledVector(velocity, damping); // freine le joueur
     sendPositionUpdate(); // Envoi des mises à jour de la position
 }
 
@@ -291,20 +285,42 @@ function checkCollisions() {
     });
 }
 
+function checkPlayerZombieCollisions() {
+    zombies.forEach((zombie, zombieIndex) => {
+        if (player.position.distanceTo(zombie.position) < 1 && !isInvincible) {
+            loseLife(); // Perdre une vie
+        }
+    });
+}
+
+function loseLife() {
+    lives--;
+    isInvincible = true;
+    setTimeout(() => {
+        isInvincible = false;
+    }, 300); // Devenir invincible pendant 0.3 secondes
+    if (lives <= 0) {
+        alert('Game Over');
+        resetGame();
+    }
+}
+
+function resetGame() {
+    lives = 3;
+    score = 0;
+    waveNumber = 1;
+    startWave(waveNumber);
+}
+
 function sendZombieKilled() {
     if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: 'zombieKilled' }));
     }
 }
 
-function updateScore() {
+function updateInfo() {
     const infoElement = document.querySelector('div');
-    infoElement.innerText = `Score: ${score} | Manche: ${waveNumber}`;
-}
-
-function updateWaveInfo() {
-    // Mise à jour du compteur de manches
-    updateScore(); // Utiliser la fonction updateScore pour afficher les infos de la manche
+    infoElement.innerText = `Score: ${score} | Manche: ${waveNumber} | Vies: ${lives}`;
 }
 
 document.addEventListener('click', (event) => {
