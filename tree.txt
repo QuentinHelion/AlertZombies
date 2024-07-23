@@ -1,0 +1,18 @@
+/zombie-fps-game
+|-- /public
+|   |-- /js
+|   |   |-- app.js
+|   |   |-- controls.js
+|   |   |-- game.js
+|   |   |-- network.js
+|   |   |-- physics.js
+|   |   |-- zombies.js
+|   |-- /models
+|   |   |-- map.glb
+|   |-- /css
+|   |   |-- style.css
+|   |-- index.html
+|-- /server
+|   |-- server.js
+|-- package.json
+|-- package-lock.json
